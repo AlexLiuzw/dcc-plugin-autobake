@@ -1,0 +1,30 @@
+{
+  "archive": "autobake_tools-1-1-5.zip",
+  "archive_bytes": 11260882,
+  "archive_root": "autobake_tools-1-1-5/",
+  "archive_sha256": "53df706df88287aa5b82371cd08af70a7a2f7413953129a1e7dfba2faa30bf91",
+  "commit": "34f49ab8718fa7c50ef9572ef58130f69642e298",
+  "copyright": "Copyright 2023 Igor Subachev (GarikDog)",
+  "files": {
+    "LICENSE.md": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4",
+    "UPSTREAM-README.md": "ad01697906163db884734e0335da3b8a3b65a9f1a15a4da0e3968335203dcf0f",
+    "__init__.py": "e2ffd6ade304040cea62d7921193d6303e8a3372857439465bca37ec1508a9ab",
+    "addon/__init__.py": "9ddf8f82047d8762f50ed09f334938c277ed0646def14c147fa337f319a4ed8d",
+    "addon/menu/__init__.py": "a75e41c45e77d2e73c48c89957061f74f77e321a2ad00b95480bf7f4fd7839be",
+    "addon/menu/at_ui_panel.py": "5ad34cc74415034ef8ae6f5bce1e75c391ac3d9e9addc89a15d463595aa49c6a",
+    "addon/operator/__init__.py": "0a9e276ab21b911c2369a0c8104373848f516fe7ac891129bafad5db24b2a80f",
+    "addon/operator/at_bake.py": "b0243a3dacc9d3f33687d5a0e4e7d42c83f006987b83b0b1ca8352c85f2622be",
+    "addon/operator/at_bake_ao.py": "00e56480e91b97424621e7f7c284eb06b14923c6b90ba3d516bd26af340e70e7",
+    "addon/operator/at_create_env.py": "eef1e2a1f922602559c8f1671ad7e53c48c5e27db0576376b34c087e618d1f0a",
+    "addon/property/__init__.py": "4dd4a248fb54dc804e1506575b9dff68a96be019b7831ef1f38ef2c726f4ec8f",
+    "addon/property/at_obj_properties.py": "75196464f3a84ebdcd02e9b26d15f6cfd56c6439a7a82a9b2839f67474d9fffb",
+    "addon/property/at_properties.py": "de59c8cdf7f9c1e3972e0ac601631b338fbff31dbfa34b1fdae956093db3970e",
+    "addon/register/__init__.py": "19e8de6959bf797ddc0f3a00dc32c09163f11a4906ea0f852e580b9a05ea403d",
+    "addon/utility/__init__.py": "9ddf8f82047d8762f50ed09f334938c277ed0646def14c147fa337f319a4ed8d",
+    "addon/utility/at_utils.py": "5686bf7f0bbac33c332ab4bb95d9030ca1ef1deb95ac1ea0df096352d0e090f1"
+  },
+  "license": "Apache-2.0",
+  "note": "Vendored files are byte-identical to the archive members listed in 'files'. The archive's images/ tree is documentation only and is not redistributed here; verify any member against the archive hash above.",
+  "tag": "v1,1,5",
+  "upstream": "https://github.com/GarikDog/autobake_tools"
+}

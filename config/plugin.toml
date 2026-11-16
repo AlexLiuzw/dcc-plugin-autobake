@@ -1,0 +1,66 @@
+# plugin.toml — runtime configuration for dcc-plugin-autobake
+#
+# Copied into the deployed plugin root at build time; the agent and the
+# sidecar both read it via ``LAP_PLUGIN_TOML`` / ``--plugin-dir``.
+#
+# provider_type / plugin_slug are the two values that make this a plugin of
+# its own rather than a feature of the Blender provider:
+#
+#   provider_type = "autobake"  → every wire tool is ``autobake.autobake.*``
+#                                 and ``provider.list_providers`` reports a
+#                                 separate instance from ``blender``.
+#   plugin_slug    = "dcc-plugin-autobake" → install root
+#                                 ``%APPDATA%\LAP\autobake-provider\
+#                                 dcc-plugin-autobake\<version>\``, independent
+#                                 of ``blender-provider\dcc-plugin-blender``.
+#
+# Blender stays the host DCC; it is not the provider identity.
+
+provider_type = "autobake"
+plugin_track = "default"
+plugin_version = "0.1.0"
+runtime_version = "0.5.10"
+# Blender releases whose embedded Python can import this agent. Kept as an
+# explicit list rather than a range so an accidental 4.0/4.1 install (no
+# tested Cycles bake support) is rejected at sidecar handshake instead of
+# failing inside a bake.
+supported_provider_versions = ["4.2", "4.5", "5.0", "5.2", "5.3"]
+platform = ["windows"]
+
+display_name = "Auto-bake Tools"
+author = "LAP DCC (adaptation); Igor Subachev / GarikDog (upstream add-on)"
+description = "Bevel-shader normal maps and Ambient Occlusion bakes for Blender, driven over MCP."
+
+# Only the tools in this plugin write files (bake_ao / bake_normal save PNGs)
+# and none of them execute scripts. The narrower list is deliberate: an empty
+# entry would unlock the generic utility/transfer tools that this plugin does
+# not ship.
+dangerous_capabilities = ["filesystem_write"]
+
+[runtime]
+server_url = "ws://127.0.0.1:8766"
+heartbeat_interval_s = 15.0
+log_level = "info"
+topology = "sidecar"
+
+[sidecar]
+binary = "sidecar/lap-autobake-sidecar/lap-autobake-sidecar.exe"
+python_runtime = "3.12.10"
+# Shared-runtime already stages lap-plugin-runtime + contract-base; this
+# plugin adds no third-party wheel of its own.
+framework_packages = []
+# Agent ABI matrix — Blender's embedded CPython per release:
+#   4.2 / 4.5 -> 3.11, 5.0 -> 3.11, 5.2 / 5.3 -> 3.13
+harden_python_versions = ["3.11", "3.13"]
+
+[sidecar.deps]
+lap_plugin_runtime = "0.5.10"
+lap_plugin_dcc_contract_base = "0.3.1"
+
+[plugin]
+plugin_slug = "dcc-plugin-autobake"
+package = "dcc_plugin_autobake"
+# Contract-dimension labels only. The auto-bake bodies are agent leaf tools
+# (HELLO proxies), so they are not listed here.
+tool_packages = []
+sidecar_local_tool_packages = []
