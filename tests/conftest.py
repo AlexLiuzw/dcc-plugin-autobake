@@ -354,7 +354,17 @@ class FakeOps:
         obj = host.context.active_object
         if obj is None:
             raise RuntimeError("nothing to bake: no active object")
+        # Real Blender bakes every *selected* mesh and aborts on anything else;
+        # reproducing that here is what makes a selection-handling regression
+        # fail the suite instead of passing on a lenient fake.
+        for candidate in host.data.objects.values():
+            if getattr(candidate, "selected", False) and getattr(candidate, "type", None) != "MESH":
+                raise RuntimeError(
+                    'Object "{0}" is not a mesh'.format(getattr(candidate, "name", "?"))
+                )
         material = obj.active_material
+        if material is None:
+            raise RuntimeError("the active object has no material to bake into")
         target = material.node_tree.nodes.active
         if target is None or target.image is None:
             raise RuntimeError("Blender bakes into the material's active image node")

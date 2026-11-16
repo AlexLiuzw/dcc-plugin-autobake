@@ -10,6 +10,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 TOML_PATH = ROOT / "config" / "plugin.toml"
 PYPROJECT = ROOT / "pyproject.toml"
@@ -88,8 +90,13 @@ def test_declared_sidecar_binary_matches_what_the_build_produces():
     rename that edits only ``plugin_slug`` can leave ``[sidecar].binary``
     pointing at a path the build never creates. This checks the declaration
     against the devkit's own naming rule rather than against a copied literal.
+
+    Skipped when the devkit is not importable (a plain checkout); the build
+    itself still fails loudly in that case, because the installer reads the
+    same path.
     """
-    from lap_plugin_devkit.installers import sidecar_bundle_dirname
+    installers = pytest.importorskip("lap_plugin_devkit.installers")
+    sidecar_bundle_dirname = installers.sidecar_bundle_dirname
 
     text = _read(TOML_PATH)
     provider_type = _value(text, "provider_type").strip('"')

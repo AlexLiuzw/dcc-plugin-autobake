@@ -454,9 +454,40 @@ def _require_environment(obj, tool_name):
     )
 
 
+def _isolate_selection(bpy, obj):
+    """Leave *obj* as the only selected object.
+
+    ``bpy.ops.object.bake`` bakes the **selected** meshes, not just the active
+    one. A leftover light or camera selection therefore aborts the bake with
+    ``Object "..." is not a mesh`` — even though the tool validated the active
+    object as a MESH. Selecting exactly the target makes the no-object_name
+    path behave like the named one, which already deselects everything.
+    """
+    objects = getattr(getattr(bpy, "data", None), "objects", None)
+    if objects is not None:
+        for candidate in list(objects):
+            if candidate is obj:
+                continue
+            try:
+                candidate.select_set(False)
+            except Exception:  # noqa: BLE001
+                pass
+    try:
+        obj.select_set(True)
+    except Exception:  # noqa: BLE001
+        pass
+    view_layer = getattr(_context(bpy), "view_layer", None)
+    if view_layer is not None:
+        try:
+            view_layer.objects.active = obj
+        except Exception:  # noqa: BLE001
+            pass
+
+
 def _bake(bpy, obj, settings, utils, tool_name, label, suffix, configure, bake_type):
     """Create the target image, bake into it, and return its name."""
     configure()
+    _isolate_selection(bpy, obj)
     if _image_node(obj) is None:
         # Upstream ``create_image`` dereferences the node without a guard, so
         # a cleared material would raise UnboundLocalError after Blender has
@@ -633,9 +664,12 @@ def bake_normal(object_name=None, output_path=None, **ignored):
     obj = _target_object(bpy, object_name)
     tool_name = "{0}.{1}.bake_normal".format(PROVIDER_TYPE, SKILL_SLUG)
     _scene_obj, settings = _settings(bpy)
+    # Arguments first: a bad output path should be rejected on its own merits,
+    # not reported as "environment not prepared" because that check happened to
+    # run earlier.
+    path = _resolve_output(output_path, obj, _NORMAL_SUFFIX)
     _require_environment(obj, tool_name)
     utils = _upstream_utils()
-    path = _resolve_output(output_path, obj, _NORMAL_SUFFIX)
 
     image_name = _bake(
         bpy,
@@ -684,9 +718,10 @@ def bake_ao(object_name=None, output_path=None, **ignored):
     obj = _target_object(bpy, object_name)
     tool_name = "{0}.{1}.bake_ao".format(PROVIDER_TYPE, SKILL_SLUG)
     _scene_obj, settings = _settings(bpy)
+    # See bake_normal: validate the caller's path before the environment check.
+    path = _resolve_output(output_path, obj, _AO_SUFFIX)
     _require_environment(obj, tool_name)
     utils = _upstream_utils()
-    path = _resolve_output(output_path, obj, _AO_SUFFIX)
 
     def _configure():
         # Upstream AT_OP_Bake_ao.execute drops the glossy preview first, so

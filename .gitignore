@@ -25,6 +25,10 @@ htmlcov/
 .venv/
 venv/
 
+# Host test evidence: contains absolute paths from whatever machine ran it, so
+# it belongs in the ticket, not in the repository.
+evidence/
+
 # Vendored package's own manifest is tracked; everything else under vendor
 # is content, not generated output, so nothing to ignore there.
 

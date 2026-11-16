@@ -358,6 +358,19 @@ def test_bake_rejects_a_path_that_escapes(host, tmp_output):
         autobake.bake_normal(output_path="../../escape.png")
 
 
+def test_bad_output_path_is_reported_before_the_environment_check(host, tmp_output):
+    """Argument errors must not be masked by a later precondition.
+
+    The path is the caller's own input, so it is validated first; otherwise a
+    typo in output_path reports "environment not prepared" and sends the caller
+    looking in the wrong place.
+    """
+    host.add_object("Cube")
+    host.select("Cube")  # deliberately not prepared
+    with pytest.raises(InvalidArgs):
+        autobake.bake_normal(output_path="../../escape.png")
+
+
 def test_bake_fails_cleanly_when_the_bake_operator_raises(host, tmp_output):
     _prepared(host, image_width=32, image_height=32)
 
@@ -368,6 +381,30 @@ def test_bake_fails_cleanly_when_the_bake_operator_raises(host, tmp_output):
     with pytest.raises(ToolError) as excinfo:
         autobake.bake_normal()
     assert excinfo.value.code == "bake_failed"
+
+
+def test_bake_isolates_the_target_selection(host, tmp_output):
+    """A leftover non-mesh selection must not abort the bake.
+
+    Real Blender bakes every selected object and refuses the whole call when
+    one of them is not a mesh, so a bake started from a viewport with a light
+    also selected used to fail even though the target was valid.
+    """
+    host.add_object("Cube")
+    host.add_object("Lamp", obj_type="LIGHT")
+    host.select("Cube")
+    obj = host.context.active_object
+    autobake.create_environment()
+
+    # Simulate the user having a light selected as well.
+    host.data.objects["Lamp"].select_set(True)
+    assert host.data.objects["Lamp"].selected is True
+
+    result = autobake.bake_normal(output_path=str(tmp_output / "isolated.png"))
+    assert result["ok"] is True
+    assert os.path.isfile(result["absolute_path"])
+    assert host.data.objects["Lamp"].selected is False
+    assert host.data.objects["Cube"].selected is True
 
 
 def test_bake_reports_a_missing_image_node_rather_than_crashing(host, tmp_output):
