@@ -35,7 +35,7 @@ def _make_install(tmp_path):
     root = tmp_path / "install" / "0.1.0"
     (root / "agent").mkdir(parents=True)
     (root / "plugin.toml").write_text(
-        'plugin_slug = "dcc-plugin-autobake"\nprovider_type = "autobake"\n',
+        'plugin_slug = "dcc-plugin-blender-autobake"\nprovider_type = "autobake"\n',
         encoding="utf-8",
     )
     return root
@@ -166,7 +166,7 @@ def test_rendered_addon_points_at_this_install(tmp_path, monkeypatch):
     text = Path(record["addon_init"]).read_text(encoding="utf-8")
 
     assert str(install) in text
-    assert "dcc-plugin-autobake" in text
+    assert "dcc-plugin-blender-autobake" in text
     assert 'bl_info = {' in text
     assert '"name": "LAP_AutoBake"' in text
     assert "__LAP_INSTALL_ROOT__" not in text

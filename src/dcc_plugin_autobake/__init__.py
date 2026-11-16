@@ -3,7 +3,7 @@
 The provider identity is ``autobake``, not ``blender``: auto-bake is a plugin
 of its own that happens to run inside Blender. Its tools are
 ``autobake.autobake.*``, its install tree is
-``%APPDATA%\\LAP\\autobake-provider\\dcc-plugin-autobake\\<version>``, and
+``%APPDATA%\\LAP\\autobake-provider\\dcc-plugin-blender-autobake\\<version>``, and
 nothing in it is shared with the Blender provider plugin.
 
 Two processes import this package, and only one of them gets far enough to
@@ -23,7 +23,7 @@ matter:
 
 from __future__ import annotations
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 #: Provider type every wire tool of this plugin is prefixed with.
 PROVIDER_TYPE = "autobake"

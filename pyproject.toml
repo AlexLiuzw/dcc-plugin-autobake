@@ -4,8 +4,8 @@ build-backend = "skill_build"
 backend-path = ["."]
 
 [project]
-name = "dcc-plugin-autobake"
-version = "0.1.0"
+name = "dcc-plugin-blender-autobake"
+version = "0.1.1"
 description = "LAP DCC provider plugin that exposes Auto-bake Tools 1.1.5 (Bevel-shader normal maps and Ambient Occlusion) on Blender 4.2-5.3 under its own provider identity."
 readme = "README.md"
 requires-python = ">=3.10"

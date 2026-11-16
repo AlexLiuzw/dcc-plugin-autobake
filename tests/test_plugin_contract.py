@@ -32,7 +32,7 @@ def test_provider_type_is_autobake_not_blender():
 
 def test_plugin_slug_is_the_independent_repo_name():
     text = _read(TOML_PATH)
-    assert _value(text, "plugin_slug") == '"dcc-plugin-autobake"'
+    assert _value(text, "plugin_slug") == '"dcc-plugin-blender-autobake"'
 
 
 def test_install_tree_cannot_collide_with_the_blender_provider():
@@ -75,8 +75,28 @@ def test_dangerous_capabilities_are_the_narrow_set():
 def test_sidecar_binary_lives_under_its_own_bundle_directory():
     text = _read(TOML_PATH)
     binary = _value(text, "binary").strip('"')
+    # `lap-plugin build-all` names the bundle after the provider type, not the
+    # plugin slug; a mismatch here means the agent spawns nothing.
     assert binary.startswith("sidecar/lap-autobake-sidecar/")
     assert binary.endswith("lap-autobake-sidecar.exe")
+
+
+def test_declared_sidecar_binary_matches_what_the_build_produces():
+    """Guards the class of defect a rename introduces.
+
+    The bundle directory is derived from ``provider_type`` by the devkit, so a
+    rename that edits only ``plugin_slug`` can leave ``[sidecar].binary``
+    pointing at a path the build never creates. This checks the declaration
+    against the devkit's own naming rule rather than against a copied literal.
+    """
+    from lap_plugin_devkit.installers import sidecar_bundle_dirname
+
+    text = _read(TOML_PATH)
+    provider_type = _value(text, "provider_type").strip('"')
+    binary = _value(text, "binary").strip('"')
+    expected_dir = sidecar_bundle_dirname(provider_type)
+    assert binary.split("/")[1] == expected_dir
+    assert binary.split("/")[2] == "{0}.exe".format(expected_dir)
 
 
 def test_package_name_matches_the_python_package():
@@ -88,7 +108,7 @@ def test_package_name_matches_the_python_package():
 def test_pyproject_declares_the_same_name_and_version():
     toml_text = _read(TOML_PATH)
     pyproject = _read(PYPROJECT)
-    assert 'name = "dcc-plugin-autobake"' in pyproject
+    assert 'name = "dcc-plugin-blender-autobake"' in pyproject
     version = _value(toml_text, "plugin_version").strip('"')
     assert 'version = "{0}"'.format(version) in pyproject
 
@@ -162,6 +182,6 @@ def test_agent_entry_point_accepts_the_real_toml():
 
     config = load_config(str(TOML_PATH))
     assert config.provider_type == "autobake"
-    assert config.plugin_slug == "dcc-plugin-autobake"
+    assert config.plugin_slug == "dcc-plugin-blender-autobake"
     assert config.topology == "sidecar"
     assert config.supported_versions

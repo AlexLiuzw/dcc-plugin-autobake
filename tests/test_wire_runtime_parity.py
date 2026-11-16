@@ -103,6 +103,6 @@ def test_ipc_url_scheme_matches_the_runtimes():
     endpoints = pytest.importorskip("lap_plugin_runtime.ipc.endpoints")
     ours = _wire_name = __import__(
         "dcc_plugin_autobake.agent._spawn", fromlist=["mint_ipc_url"]
-    ).mint_ipc_url(4321, "dcc-plugin-autobake")
-    theirs = endpoints.mint_ipc_url(dcc="autobake", agent_pid=4321, plugin_slug="dcc-plugin-autobake")
+    ).mint_ipc_url(4321, "dcc-plugin-blender-autobake")
+    theirs = endpoints.mint_ipc_url(dcc="autobake", agent_pid=4321, plugin_slug="dcc-plugin-blender-autobake")
     assert ours == theirs

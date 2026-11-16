@@ -1,4 +1,4 @@
-# dcc-plugin-autobake
+# dcc-plugin-blender-autobake
 
 LAP DCC provider plugin that exposes **Auto-bake Tools 1.1.5** over MCP:
 prepare a Blender mesh for baking, bake the Bevel Shader into a normal map,
@@ -44,10 +44,10 @@ shim. It does not touch `LAP_Bridge`, `lap_bootstrap.py`, or
 Uninstall:
 
 ```powershell
-lap-dcc-installer uninstall plugin --provider autobake --plugin-slug dcc-plugin-autobake
+lap-dcc-installer uninstall plugin --provider autobake --plugin-slug dcc-plugin-blender-autobake
 ```
 
-The install tree is `%APPDATA%\LAP\autobake-provider\dcc-plugin-autobake\<version>\`,
+The install tree is `%APPDATA%\LAP\autobake-provider\dcc-plugin-blender-autobake\<version>\`,
 separate from `blender-provider\dcc-plugin-blender`. Removing this plugin
 cannot remove the Blender provider.
 
