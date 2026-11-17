@@ -198,12 +198,10 @@ def main(argv=None):
     emit()
     emit("| Category | Pattern label | Regex |")
     emit("| --- | --- | --- |")
-    for label, pattern, _why in secrets:
-        emit("| credential | {0} | `{1}` |".format(label, pattern.replace("|", "\\|")))
-    for label, pattern, _why in internal:
-        emit("| internal | {0} | `{1}` |".format(label, pattern.replace("|", "\\|")))
-    for label, pattern, _why in local:
-        emit("| local path | {0} | `{1}` |".format(label, pattern.replace("|", "\\|")))
+    for category, items in (("credential", secrets), ("internal", internal), ("local path", local)):
+        for label, compiled, _why in items:
+            emit("| {0} | {1} | `{2}` |".format(
+                category, label, compiled.pattern.replace("|", "\\|")))
     emit()
     emit("File-type exclusions: " + ", ".join("`{0}`".format(s) for s in FORBIDDEN_SUFFIXES))
     emit()
