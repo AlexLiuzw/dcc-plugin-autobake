@@ -1,0 +1,78 @@
+"""One-shot cleanup: drop LAP_AutoBake from Blender's userpref, then self-delete.
+
+Deleting ``scripts/addons/LAP_AutoBake`` is not enough — the enabled-add-on
+list lives in ``config/userpref.blend``, so the next launch would still print
+``Add-on not loaded: "LAP_AutoBake"``. This script runs once at the next
+start, and leaves preferences alone if the add-on was reinstalled first.
+
+Only this plugin's own add-on module is touched; the Blender provider's
+``LAP_Bridge`` and the vendor add-on classes it registers are untouched.
+
+Deployed by ``lap-plugin uninstall``. DO NOT edit in place.
+"""
+
+import os
+import traceback
+
+_ADDON_MODULE = "LAP_AutoBake"
+
+
+def _still_installed(addon_utils):
+    refresh = getattr(addon_utils, "modules_refresh", None)
+    if callable(refresh):
+        refresh()
+    try:
+        modules = addon_utils.modules()
+    except TypeError:
+        modules = addon_utils.modules(refresh=True)
+    for module in modules or ():
+        name = getattr(module, "__name__", "")
+        if name == _ADDON_MODULE or name.endswith("." + _ADDON_MODULE):
+            return True
+    return False
+
+
+def _clear_userpref():
+    try:
+        import addon_utils
+        import bpy
+
+        if _still_installed(addon_utils):
+            return None
+        addon_utils.disable(_ADDON_MODULE, default_set=True)
+        bpy.ops.wm.save_userpref()
+    except Exception:  # noqa: BLE001
+        traceback.print_exc()
+    return None
+
+
+def _self_delete():
+    try:
+        os.remove(os.path.abspath(__file__))
+    except OSError:
+        pass
+
+
+def _run():
+    _clear_userpref()
+    _self_delete()
+    return None
+
+
+def register():
+    import bpy
+
+    is_registered = getattr(bpy.app.timers, "is_registered", None)
+    if callable(is_registered) and is_registered(_run):
+        return
+    bpy.app.timers.register(_run, first_interval=0.0)
+
+
+def unregister():
+    return None
+
+
+try:
+    register()
+except Exception:  # noqa: BLE001
+    traceback.print_exc()

@@ -1,0 +1,15 @@
+# Normalise everything to LF in the repository so a Windows and a Linux
+# checkout produce the same blob.
+* text=auto eol=lf
+
+# The vendored add-on is byte-identical to its pinned upstream archive and is
+# verified by sha256 in tests/test_vendor_integrity.py. Any end-of-line
+# conversion would change those bytes, so every file under vendor/ is marked
+# `-text`: Git stores exactly what is there and checks out exactly that.
+# This rule must come AFTER the `*` rule — later patterns win.
+src/dcc_plugin_autobake/agent/vendor/** -text
+
+# Windows-only scripts that must keep CRLF if they ever gain a shebang.
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+*.cmd text eol=crlf

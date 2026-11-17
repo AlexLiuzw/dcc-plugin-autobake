@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "skill_build"
+backend-path = ["."]
+
+[project]
+name = "dcc-plugin-blender-autobake"
+version = "0.1.2"
+description = "LAP DCC provider plugin that exposes Auto-bake Tools 1.1.5 (Bevel-shader normal maps and Ambient Occlusion) on Blender 4.2-5.3 under its own provider identity."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "Apache-2.0"
+
+# No runtime `dependencies` on purpose.
+#
+# The sidecar's framework packages come from the LAP *shared runtime* at
+# install time: `[sidecar.deps]` in `config/plugin.toml` pins the versions and
+# the installer substitutes the shared `Lib` path into the sidecar's `._pth`.
+# Listing them here as VCS requirements would make the build fetch a second
+# copy from source, and a sidecar with two runtimes on `sys.path` fails in
+# ways that look like plugin bugs.
+#
+# The agent subtree imports neither: it is stdlib-only by contract, so the
+# agent wheel runs inside Blender's embedded Python with nothing installed.
+dependencies = []
+
+[project.optional-dependencies]
+# Only needed to build wheels locally and to run the test suite.
+dev = [
+    "pytest>=7.4",
+    "setuptools>=68",
+    "wheel",
+]
+
+# Source code lives under src/. Runtime reads the copy of skills/ that
+# skill_build.py mirrors into the package before every build.
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"dcc_plugin_autobake" = ["py.typed", "skills/**/*.md"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

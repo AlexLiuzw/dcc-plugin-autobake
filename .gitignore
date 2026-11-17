@@ -1,0 +1,40 @@
+# Byte-compiled / optimised / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.pyd
+*.dll
+
+# Build output
+build/
+dist/
+*.egg-info/
+.eggs/
+wheels/
+*.whl
+*.zip
+
+# Test / tooling caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+.tox/
+.venv/
+venv/
+
+# Host test evidence: contains absolute paths from whatever machine ran it, so
+# it belongs in the ticket, not in the repository.
+evidence/
+
+# Vendored package's own manifest is tracked; everything else under vendor
+# is content, not generated output, so nothing to ignore there.
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/

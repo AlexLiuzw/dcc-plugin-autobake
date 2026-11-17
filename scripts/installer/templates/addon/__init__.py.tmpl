@@ -1,0 +1,202 @@
+"""LAP_AutoBake — Blender add-on shell for the auto-bake provider plugin.
+
+This file is a template: ``scripts/installer/wirer.py`` renders it into
+``%APPDATA%\\Blender Foundation\\Blender\\<version>\\scripts\\addons\\
+LAP_AutoBake\\__init__.py`` at install time, substituting the install root and
+the plugin slug.
+
+The add-on name is deliberately **not** ``LAP_Bridge``: that is the Blender
+provider's shell, and two plugins sharing one add-on module would fight over
+``register()`` / ``unregister()`` and over a single ``_HANDLE``. This shell
+registers its own add-on, starts its own agent (and therefore its own
+sidecar), and writes into its own install tree.
+
+``register()`` is the only entry point. It defers startup with a
+``bpy.app.timers`` callback so Blender has finished loading before the agent
+touches ``bpy.context.scene``; ``load_post`` is bound as well so a
+double-clicked ``.blend`` (which purges non-persistent timers) does not leave
+the plugin unloaded.
+"""
+
+bl_info = {
+    "name": "LAP_AutoBake",
+    "author": "LAP DCC",
+    "version": (0, 1, 0),
+    "blender": (4, 2, 0),
+    "location": "View3D > Sidebar > Auto-bake Tools",
+    "description": "Auto-bake Tools over MCP (LAP DCC provider 'autobake')",
+    "category": "Interface",
+}
+
+import os
+import sys
+import traceback
+
+_INSTALL_ROOT = r"__LAP_INSTALL_ROOT__"
+_PLUGIN_SLUG = "__LAP_PLUGIN_SLUG__"
+_PLUGIN_ID = "__LAP_PLUGIN_ID__"
+
+_HANDLE = None
+_START_SCHEDULED = False
+
+
+def _log(message):
+    print("[lap-autobake:{0}] {1}".format(_PLUGIN_ID, message))
+
+
+def _agent_tree():
+    """Return ``(agent_path, plugin_toml)`` for this install."""
+    root = (
+        os.environ.get("LAP_AUTOBAKE_INSTALL_ROOT_" + _PLUGIN_ID)
+        or os.environ.get("LAP_AUTOBAKE_INSTALL_ROOT")
+        or _INSTALL_ROOT
+    )
+    base = os.path.join(root, "agent")
+    abi = "cp{0}{1}".format(sys.version_info[0], sys.version_info[1])
+    abi_dir = os.path.join(base, abi)
+    plugin_toml = os.path.join(root, "plugin.toml")
+    if os.path.isdir(abi_dir):
+        return abi_dir, plugin_toml
+    # A harden=none build stages a flat tree; use it when the ABI bucket is
+    # absent but a real package is there.
+    if _has_package(base):
+        return base, plugin_toml
+    return abi_dir, plugin_toml
+
+
+def _has_package(path):
+    try:
+        names = os.listdir(path)
+    except OSError:
+        return False
+    return any(
+        os.path.isfile(os.path.join(path, name, "__init__.py")) for name in names
+    )
+
+
+def _live_src():
+    """Dev hook: ``LAP_PLUGIN_SRC__DCC_PLUGIN_AUTOBAKE`` overrides the tree."""
+    suffix = _PLUGIN_SLUG.replace("-", "_").upper()
+    return os.environ.get("LAP_PLUGIN_SRC__" + suffix) or None
+
+
+def _start_agent():
+    global _HANDLE
+    if _HANDLE is not None:
+        return _HANDLE
+
+    agent_tree, plugin_toml = _agent_tree()
+    if not os.path.isdir(agent_tree):
+        abi = "cp{0}{1}".format(sys.version_info[0], sys.version_info[1])
+        built = []
+        try:
+            built = sorted(
+                name
+                for name in os.listdir(os.path.join(_INSTALL_ROOT, "agent"))
+                if name.startswith("cp")
+            )
+        except OSError:
+            pass
+        _log(
+            "agent tree missing: {0} (this Blender is Python {1}.{2} = {3}; "
+            "built ABI trees: {4})".format(
+                agent_tree,
+                sys.version_info[0],
+                sys.version_info[1],
+                abi,
+                ", ".join(built) or "none",
+            )
+        )
+        return None
+    if not os.path.isfile(plugin_toml):
+        _log("plugin.toml missing: {0}".format(plugin_toml))
+        return None
+
+    live = _live_src()
+    if live and os.path.isdir(live) and live not in sys.path:
+        sys.path.insert(0, live)
+    if agent_tree not in sys.path:
+        sys.path.insert(0, agent_tree)
+
+    from dcc_plugin_autobake.agent import start
+
+    _HANDLE = start(plugin_toml, plugin_id=_PLUGIN_ID)
+    _log("agent started: state={0!r}".format(getattr(_HANDLE, "state", "?")))
+    return _HANDLE
+
+
+def _deferred_start(*_args):
+    global _START_SCHEDULED
+    _START_SCHEDULED = False
+    try:
+        _start_agent()
+    except Exception:  # noqa: BLE001
+        traceback.print_exc()
+        _log("register() failed")
+    return None
+
+
+# Survive the handler purge that happens when a .blend is loaded.
+_deferred_start._bpy_persistent = True
+
+
+def _schedule(bpy):
+    global _START_SCHEDULED
+    if _START_SCHEDULED:
+        return
+    _START_SCHEDULED = True
+    try:
+        bpy.app.timers.register(_deferred_start, first_interval=0.0, persistent=True)
+    except TypeError:
+        bpy.app.timers.register(_deferred_start, first_interval=0.0)
+
+
+def _bind_load_post(bpy):
+    handlers = getattr(getattr(bpy.app, "handlers", None), "load_post", None)
+    if handlers is not None and _deferred_start not in handlers:
+        handlers.append(_deferred_start)
+
+
+def _unbind_load_post(bpy):
+    handlers = getattr(getattr(bpy.app, "handlers", None), "load_post", None)
+    if handlers is None:
+        return
+    try:
+        handlers.remove(_deferred_start)
+    except (ValueError, AttributeError):
+        pass
+
+
+def register():
+    """Blender add-on enable hook — the official entry point."""
+    try:
+        import bpy
+
+        _bind_load_post(bpy)
+        _schedule(bpy)
+    except Exception:  # noqa: BLE001
+        traceback.print_exc()
+        _log("register() could not schedule startup")
+        try:
+            _start_agent()
+        except Exception:  # noqa: BLE001
+            traceback.print_exc()
+
+
+def unregister():
+    """Blender add-on disable hook — stop this plugin's agent and sidecar."""
+    global _HANDLE, _START_SCHEDULED
+    _START_SCHEDULED = False
+    try:
+        import bpy
+
+        _unbind_load_post(bpy)
+    except Exception:  # noqa: BLE001
+        pass
+    handle, _HANDLE = _HANDLE, None
+    if handle is None:
+        return
+    try:
+        handle.shutdown(timeout=5.0)
+    except Exception:  # noqa: BLE001
+        traceback.print_exc()

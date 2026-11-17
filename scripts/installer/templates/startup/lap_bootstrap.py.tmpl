@@ -1,0 +1,89 @@
+"""Enable the LAP_AutoBake add-on once Blender has finished booting.
+
+This is *not* the integration point — the agent starts in
+``LAP_AutoBake.register()``. Startup scripts run before ``scripts/addons`` is
+on ``sys.path``, so calling ``addon_utils.enable`` at import time prints
+``No module named 'LAP_AutoBake'`` and does nothing. Deferring with a
+persistent timer (plus a ``load_post`` binding) is what makes enabling work
+from a cold start and after a ``.blend`` is opened from the command line.
+
+Deployed by ``lap-plugin install --wire``. DO NOT edit in place.
+"""
+
+import traceback
+
+_ADDON_MODULE = "LAP_AutoBake"
+_PLUGIN_ID = "__LAP_PLUGIN_ID__"
+_TIMER_INTERVAL_S = 0.1
+
+
+def _refresh(addon_utils):
+    refresh = getattr(addon_utils, "modules_refresh", None)
+    if callable(refresh):
+        refresh()
+        return
+    try:
+        addon_utils.modules(refresh=True)
+    except TypeError:
+        list(addon_utils.modules())
+
+
+def _enable(*_args):
+    try:
+        import addon_utils
+
+        _loaded, enabled = addon_utils.check(_ADDON_MODULE)
+        if enabled:
+            return None
+        _refresh(addon_utils)
+        addon_utils.enable(_ADDON_MODULE, default_set=True, persistent=True)
+    except Exception:  # noqa: BLE001
+        traceback.print_exc()
+        import sys
+
+        print(
+            "[lap-autobake-bootstrap:{0}] deferred enable({1!r}) failed".format(
+                _PLUGIN_ID, _ADDON_MODULE
+            ),
+            file=sys.stderr,
+        )
+    return None
+
+
+# Same flag ``@bpy.app.handlers.persistent`` sets.
+_enable._bpy_persistent = True
+
+
+def _bind_load_post(bpy):
+    handlers = getattr(getattr(bpy.app, "handlers", None), "load_post", None)
+    if handlers is not None and _enable not in handlers:
+        handlers.append(_enable)
+
+
+def _schedule():
+    import bpy
+
+    _bind_load_post(bpy)
+    is_registered = getattr(bpy.app.timers, "is_registered", None)
+    if callable(is_registered) and is_registered(_enable):
+        return
+    try:
+        bpy.app.timers.register(
+            _enable, first_interval=_TIMER_INTERVAL_S, persistent=True
+        )
+    except TypeError:
+        bpy.app.timers.register(_enable, first_interval=_TIMER_INTERVAL_S)
+
+
+def register():
+    _schedule()
+
+
+def unregister():
+    return None
+
+
+try:
+    _schedule()
+except Exception:  # noqa: BLE001
+    traceback.print_exc()
