@@ -30,6 +30,7 @@ from ._spawn import SidecarProcess, SpawnError, mint_ipc_url
 from ._wire import build_hello
 from ._wiring import build_registry
 from .tools._bpy import get_bpy
+from . import _addon
 
 log = get_logger("orchestrator")
 
@@ -146,10 +147,13 @@ def _register_host_addon(bpy):
             exc_info=True,
         )
         return {"ok": False, "reason": "register_failed", "detail": str(exc)}
-    from ._addon import registration_owner
 
-    status = {"ok": True, "owner": registration_owner()}
-    log.info("host add-on status: %s", status)
+    status = {
+        "ok": True,
+        "ids": _addon.registered_ids(),
+        "owns_property_groups": _addon.owns_property_groups(),
+    }
+    log.info("host registration status: %s", status)
     return status
 
 
