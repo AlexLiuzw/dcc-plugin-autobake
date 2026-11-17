@@ -99,19 +99,25 @@ try:
 
     step("sidecar handshake", _await_online)
 
-    # 3. children of this process: a running sidecar must be visible in the OS
+    # 3. children of this process: a running sidecar must be visible in the OS.
+    #    `tasklist` rather than `wmic`: Blender 5.x ships Python 3.13 and recent
+    #    Windows no longer provides wmic.
     def _sidecar_process():
         import subprocess as sp
 
         out = sp.run(
-            ["wmic", "process", "where", "name='lap-autobake-sidecar.exe'",
-             "get", "ProcessId,CommandLine", "/format:list"],
+            ["tasklist", "/FI", "IMAGENAME eq lap-autobake-sidecar.exe", "/FO", "CSV", "/NH"],
             capture_output=True, text=True,
         ).stdout
-        pids = [line.split("=", 1)[1].strip() for line in out.splitlines()
-                if line.startswith("ProcessId=") and line.split("=", 1)[1].strip()]
+        pids = []
+        for line in out.splitlines():
+            parts = [piece.strip('"') for piece in line.split('","')]
+            if len(parts) >= 2 and parts[0].lower().startswith("lap-autobake-sidecar"):
+                pids.append(parts[1])
         if not pids:
-            raise AssertionError("no lap-autobake-sidecar.exe process is running")
+            raise AssertionError(
+                "no lap-autobake-sidecar.exe process is running; tasklist said: %r" % out
+            )
         return {"pids": pids}
 
     step("sidecar process alive", _sidecar_process)
