@@ -23,13 +23,13 @@ import os
 
 from . import AgentBootError, AgentHandle
 from ._addon import ensure_registered
-from ._bpy import get_bpy
 from ._dispatch import MainThreadDispatcher, MainThreadTicker, build_executor, create_blender_invoker
 from ._logging import get_logger
 from ._server import ACCEPT_TIMEOUT_S, AgentServer
 from ._spawn import SidecarProcess, SpawnError, mint_ipc_url
 from ._wire import build_hello
 from ._wiring import build_registry
+from .tools._bpy import get_bpy
 
 log = get_logger("orchestrator")
 
@@ -173,7 +173,7 @@ def _teardown(server, process):
 class _StartHeartbeat:
     """Periodic HEARTBEAT writer (2 s, matching the IPC session default)."""
 
-    __slots__ = ("_server", "_ticker", "_thread", "_stop")
+    __slots__ = ("_server", "_ticker", "_thread", "_stop", "_interval")
 
     def __init__(self, server, ticker, interval_s=2.0):
         import threading

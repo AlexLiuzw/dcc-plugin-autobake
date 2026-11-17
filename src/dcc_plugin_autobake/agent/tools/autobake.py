@@ -39,7 +39,7 @@ from ._bpy import require_bpy
 from ._errors import InvalidArgs, ToolError
 from ._paths import default_output_path, public_output_path, resolve_output_path
 from ._registry import leaf_tool
-from .. import _addon
+from .. import _addon, _ui
 
 PROVIDER_TYPE = "autobake"
 SKILL_SLUG = "autobake"
@@ -448,7 +448,7 @@ def _require_environment(obj, tool_name):
         context={
             "tool": tool_name,
             "object": getattr(obj, "name", None),
-            "upstream_operator": _addon.OPERATOR_CREATE_ENV,
+            "upstream_operator": _addon.UPSTREAM_OPERATORS[0],
             "prepared_flag": _addon.PREPARED_ATTR,
         },
     )
@@ -615,7 +615,7 @@ def create_environment(object_name=None, bevel_samples=None, bevel_radius=None,
             code="environment_build_failed",
             context={
                 "object": getattr(obj, "name", None),
-                "upstream_operator": _addon.OPERATOR_CREATE_ENV,
+                "upstream_operator": _addon.UPSTREAM_OPERATORS[0],
                 "hint": "a bake environment needs the Cycles engine",
             },
         ) from exc
@@ -639,9 +639,13 @@ def create_environment(object_name=None, bevel_samples=None, bevel_radius=None,
         "image_node_active": bool(node_active),
         "settings_requested": requested,
         "settings_applied_to_nodes": pushed,
-        "upstream_operator": _addon.OPERATOR_CREATE_ENV,
+        "upstream_operator": _addon.UPSTREAM_OPERATORS[0],
         "addon_version": ".".join(str(part) for part in _addon.ADDON_VERSION),
-        "registration_owner": _addon.registration_owner(),
+        "registration": {
+            "registered": _addon.is_registered(),
+            "ids": _addon.registered_ids(),
+            "owns_property_groups": _addon.owns_property_groups(),
+        },
         "viewport_shading_skipped": viewport_error,
         # Names the 4.x-only Cycles knobs this host lacks (empty on 4.2 /
         # 4.5, where upstream ran unmodified). Both the leaf tool and the
@@ -696,7 +700,7 @@ def bake_normal(object_name=None, output_path=None, **ignored):
         "width": width,
         "height": height,
         "suffix": _NORMAL_SUFFIX,
-        "upstream_operator": _addon.OPERATOR_BAKE,
+        "upstream_operator": _addon.UPSTREAM_OPERATORS[1],
         "environment_prepared": _environment_prepared(obj),
         "image_width_setting": getattr(settings, "image_width_prop_int", None),
         "image_height_setting": getattr(settings, "image_height_prop_int", None),
@@ -755,7 +759,7 @@ def bake_ao(object_name=None, output_path=None, **ignored):
         "width": width,
         "height": height,
         "suffix": _AO_SUFFIX,
-        "upstream_operator": _addon.OPERATOR_BAKE_AO,
+        "upstream_operator": _addon.UPSTREAM_OPERATORS[2],
         "environment_prepared": _environment_prepared(obj),
         "image_width_setting": getattr(settings, "image_width_prop_int", None),
         "image_height_setting": getattr(settings, "image_height_prop_int", None),
@@ -773,38 +777,60 @@ def bake_ao(object_name=None, output_path=None, **ignored):
     arg_schema=_STATUS_SCHEMA,
 )
 def status(**ignored):
-    """Read-only report of what the auto-bake add-on registered in this host."""
+    """Read-only report of what is registered in this host, and by whom.
+
+    Attribution is the point of this tool. The Blender provider plugin vendors
+    the same upstream add-on, so ``at.*`` operators and a ``VIEW3D_PT_Atobake``
+    panel can be present and working while this plugin is completely dead. Each
+    id is therefore reported with the module that defines the live class, and
+    ``owned_by_this_plugin`` is the only field an acceptance run may treat as
+    evidence for us.
+    """
     bpy = require_bpy()
     addon = _addon.ensure_registered(bpy)
     info = dict(getattr(addon, "bl_info", {}) or {})
-
-    operators = {}
-    ops = getattr(bpy, "ops", None)
-    for full_id in _addon.OPERATORS:
-        namespace, _, name = full_id.partition(".")
-        operators[full_id] = hasattr(getattr(ops, namespace, None), name)
-
-    panel_class = _panel_class()
     types_module = getattr(bpy, "types", None)
-    panel_registered = None
-    if types_module is not None:
-        # Blender files a registered class under its bl_idname, not its
-        # __name__: this add-on defines VIEW3D_PT_Autobake but registers
-        # VIEW3D_PT_Atobake, so a lookup by class name always misses.
-        panel_registered = False
-        for key in (_addon.PANEL_IDNAME, _addon.PANEL_CLASS_NAME):
-            candidate = getattr(types_module, key, None)
-            if candidate is None:
+    ops = getattr(bpy, "ops", None)
+
+    def _operator_report(full_id):
+        namespace, _, name = full_id.partition(".")
+        holder = getattr(ops, namespace, None)
+        present = hasattr(holder, name)
+        return {"registered": present, "owned_by_this_plugin": present}
+
+    def _host_operator_report(full_id):
+        """An ``at.*`` operator is never this plugin's: we never register one."""
+        namespace, _, name = full_id.partition(".")
+        holder = getattr(ops, namespace, None)
+        return {"registered": hasattr(holder, name), "owned_by_this_plugin": False}
+
+    def _class_report(idname, fallback_name=None):
+        candidate = None
+        for key in (idname, fallback_name):
+            if not key:
                 continue
-            if panel_class is not None and candidate is not panel_class:
-                continue
-            panel_registered = True
-            break
+            maybe = getattr(types_module, key, None) if types_module is not None else None
+            if maybe is not None:
+                candidate = maybe
+                break
+        module = getattr(candidate, "__module__", None) if candidate is not None else None
+        return {
+            "idname": idname,
+            "registered": candidate is not None,
+            "module": module,
+            "owned_by_this_plugin": bool(module) and _ui.is_ours(candidate),
+        }
+
+    ours = {op: _operator_report(op) for op in _ui.OPERATORS}
+    host = {op: _host_operator_report(op) for op in _addon.UPSTREAM_OPERATORS}
+    our_panel = _class_report(_ui.PANEL_IDNAME)
+    host_panel = _class_report(_addon.UPSTREAM_PANEL_IDNAME, "VIEW3D_PT_Autobake")
 
     scene_type = getattr(types_module, "Scene", None) if types_module is not None else None
     object_type = getattr(types_module, "Object", None) if types_module is not None else None
     active = getattr(_context(bpy), "active_object", None)
-    settings = getattr(_context(bpy).scene, "at_tool", None) if _context(bpy).scene else None
+    scene = _context(bpy).scene
+    settings = getattr(scene, "at_tool", None) if scene is not None else None
 
     prepared = None
     if active is not None:
@@ -826,20 +852,23 @@ def status(**ignored):
         "copyright": _addon.ADDON_COPYRIGHT,
         "registration": {
             "registered": _addon.is_registered(),
-            "owner": _addon.registration_owner(),
             "detail": _addon.registration_detail(),
+            "ids": _addon.registered_ids(),
+            "owns_property_groups": _addon.owns_property_groups(),
             "render_env_guard_installed": _addon.guard_installed(),
         },
-        "operators": operators,
-        "panel": {
-            "class": _addon.PANEL_CLASS_NAME,
-            "idname": getattr(panel_class, "bl_idname", _addon.PANEL_IDNAME),
-            "label": getattr(panel_class, "bl_label", _addon.PANEL_LABEL),
-            "space_type": getattr(panel_class, "bl_space_type", "VIEW_3D"),
-            "region_type": getattr(panel_class, "bl_region_type", "UI"),
-            "category": getattr(panel_class, "bl_category", _addon.PANEL_LABEL),
-            "registered": panel_registered,
-            "lookup_key": _addon.PANEL_IDNAME,
+        # Our ids — the only ones that count as this plugin's evidence.
+        "operators": ours,
+        "panel": our_panel,
+        # The host provider's ids, reported for diagnosis only.
+        "host_registrations": {
+            "operators": host,
+            "panel": host_panel,
+            "note": (
+                "these belong to whichever plugin registered them first; "
+                "'owned_by_this_plugin' is false whenever the Blender provider's "
+                "vendored copy is the live one"
+            ),
         },
         "properties": {
             "Scene.at_tool": (
@@ -874,15 +903,6 @@ def status(**ignored):
 # ---------------------------------------------------------------------------
 # helpers that need a resolved object
 # ---------------------------------------------------------------------------
-
-
-def _panel_class():
-    """The upstream panel class object (its definition, not its state)."""
-    try:
-        from ..vendor.autobake_tools.addon.menu.at_ui_panel import VIEW3D_PT_Autobake
-    except Exception:  # noqa: BLE001
-        return None
-    return VIEW3D_PT_Autobake
 
 
 def _resolve_output(output_path, obj, suffix):

@@ -417,6 +417,37 @@ class _ViewLayerObjects:
         self._host.context.active_object = value
 
 
+class _Report:
+    """Stand-in for Blender's ``Operator.report`` sink."""
+
+    def __init__(self, host):
+        self.host = host
+
+    def __call__(self, level, message):
+        self.host.reports.append({"level": list(level)[0] if level else "", "message": message})
+
+
+def _operator_invoker(cls):
+    """A callable that runs ``cls.execute`` like Blender would.
+
+    Blender instantiates the operator and calls ``execute(context)``; the
+    returned set (``{'FINISHED'}`` / ``{'CANCELLED'}``) is what the UI reacts
+    to. Tests need the same path so a panel button is not a different code
+    path from an MCP tool call.
+    """
+
+    def _invoke(*_args, **_kwargs):
+        instance = cls()
+        instance.report = _Report(_CURRENT_HOST[0]) if _CURRENT_HOST else (lambda *a: None)
+        return instance.execute(_CURRENT_HOST[0].context)
+
+    _invoke.operator_class = cls
+    return _invoke
+
+
+_CURRENT_HOST = [None]
+
+
 class FakeHost(_types.ModuleType):
     """A ``bpy`` module good enough for the auto-bake code paths."""
 
@@ -442,6 +473,7 @@ class FakeHost(_types.ModuleType):
             is_job_running=lambda _name: False,
         )
         self.bake_calls = []
+        self.reports = []
         self.registered_classes = []
         self.ops = FakeOps(self)
         self.context = _types.SimpleNamespace(
@@ -472,7 +504,9 @@ class FakeHost(_types.ModuleType):
             if holder is None:
                 holder = _types.SimpleNamespace()
                 setattr(self.ops, namespace, holder)
-            setattr(holder, name, lambda *a, **k: {"FINISHED"})
+            # Bind the real operator's execute so a test can drive the button
+            # path and get the same behaviour as the MCP tool call.
+            setattr(holder, name, _operator_invoker(cls))
 
     def _unregister_class(self, cls):
         if cls in self.registered_classes:
@@ -480,6 +514,11 @@ class FakeHost(_types.ModuleType):
         key = getattr(cls, "bl_idname", "") or getattr(cls, "__name__", "")
         if getattr(self.types, key, None) is cls:
             delattr(self.types, key)
+        if "." in key:
+            namespace, _, name = key.partition(".")
+            holder = getattr(self.ops, namespace, None)
+            if holder is not None and hasattr(holder, name):
+                delattr(holder, name)
 
     # -- helpers for tests -----------------------------------------
 
@@ -525,6 +564,7 @@ def _install_bpy(host, monkeypatch=None):
         else:
             sys.modules[name] = module
     _rebind_vendored_bpy(host)
+    _CURRENT_HOST[0] = host
     return modules
 
 

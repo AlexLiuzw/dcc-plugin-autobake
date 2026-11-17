@@ -23,7 +23,7 @@ matter:
 
 from __future__ import annotations
 
-__version__ = "0.1.1"
+__version__ = "0.1.2"
 
 #: Provider type every wire tool of this plugin is prefixed with.
 PROVIDER_TYPE = "autobake"

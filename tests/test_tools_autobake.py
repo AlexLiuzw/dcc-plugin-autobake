@@ -11,7 +11,9 @@ import os
 
 import pytest
 
-from dcc_plugin_autobake.agent import _addon
+import types as _types
+
+from dcc_plugin_autobake.agent import _addon, _ui
 from dcc_plugin_autobake.agent.tools import _bpy, autobake
 from dcc_plugin_autobake.agent.tools._errors import InvalidArgs, ToolError
 
@@ -57,88 +59,126 @@ def test_every_advertised_tool_declares_a_schema():
 
 
 # ---------------------------------------------------------------------------
-# registration behaviour
+# registration: our own ids, no contest with the host provider
 # ---------------------------------------------------------------------------
 
 
 def test_registration_is_idempotent(host):
     _addon.ensure_registered(host)
+    first = _addon.registered_ids()
     _addon.ensure_registered(host)
-    assert _addon.registration_owner() == _addon.OWNER_THIS_PLUGIN
-
-
-def _pretend_another_copy_is_registered(host):
-    """Make the fake host look like a second copy already owns the classes."""
-    import types as _types
-
-    host.types.Scene.at_tool = object()
-    if not hasattr(host.ops, "at"):
-        host.ops.at = _types.SimpleNamespace()
-    for full_id in _addon.OPERATORS:
-        setattr(host.ops.at, full_id.partition(".")[2], lambda *a, **k: {"FINISHED"})
-
-
-def test_adopts_an_existing_upstream_registration(host):
-    """A second copy (the Blender provider) may already own the classes."""
-    _pretend_another_copy_is_registered(host)
-
-    from dcc_plugin_autobake.agent.vendor import autobake_tools
-
-    def _duplicate():
-        raise ValueError("Register class: already registered as 'AT_OP_Bake'")
-
-    original = autobake_tools.register
-    autobake_tools.register = _duplicate
-    try:
-        _addon.ensure_registered(host)
-    finally:
-        autobake_tools.register = original
-
-    assert _addon.registration_owner() == _addon.OWNER_OTHER_COPY
+    assert _addon.registered_ids() == first
     assert _addon.is_registered() is True
 
 
-def test_adopted_registration_is_never_unregistered(host):
-    _pretend_another_copy_is_registered(host)
-
-    from dcc_plugin_autobake.agent.vendor import autobake_tools
-
-    def _duplicate():
-        raise ValueError("Register class: already registered as 'AT_OP_Bake'")
-
-    original = autobake_tools.register
-    autobake_tools.register = _duplicate
-    try:
-        _addon.ensure_registered(host)
-    finally:
-        autobake_tools.register = original
-
-    assert _addon.unregister(host) is False
-    assert _addon.registration_owner() == _addon.OWNER_OTHER_COPY
-
-
-def test_a_duplicate_error_without_a_registered_host_still_raises(host):
-    """Adoption needs evidence that the host really does have the add-on."""
-    from dcc_plugin_autobake.agent.vendor import autobake_tools
-
-    def _duplicate():
-        raise ValueError("Register class: already registered as 'AT_OP_Bake'")
-
-    original = autobake_tools.register
-    autobake_tools.register = _duplicate
-    try:
-        with pytest.raises(ValueError):
-            _addon.ensure_registered(host)
-    finally:
-        autobake_tools.register = original
-    assert _addon.registration_owner() == _addon.OWNER_NONE
-
-
-def test_registering_our_own_copy_is_reversible(host):
+def test_we_register_only_our_own_ids(host):
+    """Every id this plugin registers is in its own namespace."""
     _addon.ensure_registered(host)
-    assert _addon.registration_owner() == _addon.OWNER_THIS_PLUGIN
+    ids = _addon.registered_ids()
+    assert _ui.PANEL_IDNAME in ids
+    for operator in _ui.OPERATORS:
+        assert operator in ids
+    # Nothing from the upstream id set may appear.
+    for upstream in _addon.UPSTREAM_OPERATORS:
+        assert upstream not in ids
+    assert _addon.UPSTREAM_PANEL_IDNAME not in ids
+
+
+def test_registered_classes_belong_to_this_plugin(host):
+    """The acceptance rule: __module__ must be ours for evidence to count."""
+    _addon.ensure_registered(host)
+    for idname in _addon.registered_ids():
+        cls = getattr(host.types, idname, None)
+        assert cls is not None, idname
+        assert _ui.is_ours(cls), "{0} is defined by {1}".format(
+            idname, getattr(cls, "__module__", "?")
+        )
+
+
+def test_coexists_with_a_host_copy_that_owns_the_upstream_ids(host):
+    """The Blender provider's 0.3.1 copy holds at.* and VIEW3D_PT_Atobake.
+
+    Both must be able to register: ours under autobake.*, the host's left
+    untouched. This is the coexistence decision, asserted rather than assumed.
+    """
+    host.types.Scene.at_tool = object()
+    host.types.Object.at_objtool = object()
+    host.ops.at = _types.SimpleNamespace()
+    for upstream in _addon.UPSTREAM_OPERATORS:
+        setattr(host.ops.at, upstream.partition(".")[2], lambda *a, **k: {"FINISHED"})
+    host.types.VIEW3D_PT_Atobake = _HostPanel
+
+    _addon.ensure_registered(host)
+
+    # Ours registered…
+    assert host.types.VIEW3D_PT_AutobakeTools is not None
+    for operator in _ui.OPERATORS:
+        namespace, _, name = operator.partition(".")
+        assert hasattr(getattr(host.ops, namespace), name)
+    # …and theirs survived, unchanged.
+    assert host.types.VIEW3D_PT_Atobake is _HostPanel
+    for upstream in _addon.UPSTREAM_OPERATORS:
+        assert hasattr(host.ops.at, upstream.partition(".")[2])
+
+
+def test_unregistering_leaves_the_host_provider_alone(host):
+    host.types.Scene.at_tool = object()
+    host.types.Object.at_objtool = object()
+    host.types.VIEW3D_PT_Atobake = _HostPanel
+    _addon.ensure_registered(host)
     assert _addon.unregister(host) is True
-    assert _addon.registration_owner() == _addon.OWNER_NONE
+
+    assert host.types.VIEW3D_PT_Atobake is _HostPanel
+    # The host's property groups are data the bake helpers need, so they stay.
+    assert host.types.Scene.at_tool is not None
+    assert _addon.owns_property_groups() is False
+
+
+def test_our_property_groups_are_removed_when_we_created_them(host):
+    assert not hasattr(host.types.Scene, "at_tool")
+    _addon.ensure_registered(host)
+    assert _addon.owns_property_groups() is True
+    assert hasattr(host.types.Scene, "at_tool")
+    _addon.unregister(host)
+    assert not hasattr(host.types.Scene, "at_tool")
+
+
+def test_registration_rolls_back_when_a_class_fails(host):
+    """A half-registered UI is worse than none: an operator with no panel."""
+    original = host.utils.register_class
+    calls = {"n": 0}
+
+    def _fail_on_third(cls):
+        calls["n"] += 1
+        if calls["n"] >= 3:
+            raise RuntimeError("register_class refused")
+        return original(cls)
+
+    host.utils.register_class = _fail_on_third
+    with pytest.raises(RuntimeError):
+        _addon.ensure_registered(host)
+    assert _addon.is_registered() is False
+    # Nothing of ours may be left behind.
+    assert not hasattr(host.types, _ui.PANEL_IDNAME)
+    for operator in _ui.OPERATORS:
+        namespace, _, name = operator.partition(".")
+        holder = getattr(host.ops, namespace, None)
+        assert holder is None or not hasattr(holder, name)
+
+
+def test_registering_twice_then_unregistering_is_clean(host):
+    _addon.ensure_registered(host)
+    _addon.ensure_registered(host)
+    assert _addon.unregister(host) is True
+    assert _addon.is_registered() is False
+    assert _addon.registered_ids() == []
+
+
+class _HostPanel:
+    """Stands in for the host provider's own VIEW3D_PT_Atobake class."""
+
+    bl_idname = "VIEW3D_PT_Atobake"
+    bl_label = "Auto-bake Tools"
 
 
 # ---------------------------------------------------------------------------
@@ -204,7 +244,8 @@ def test_create_environment_prepares_the_object(host, tmp_output):
     assert result["image_node_created"] is True
     assert result["image_node_active"] is True
     assert result["provider_type"] == "autobake"
-    assert result["registration_owner"] == _addon.OWNER_THIS_PLUGIN
+    assert result["registration"]["registered"] is True
+    assert _ui.PANEL_IDNAME in result["registration"]["ids"]
 
 
 def test_create_environment_builds_the_expected_node_network(host, tmp_output):
@@ -437,9 +478,12 @@ def test_status_reports_registration_and_the_panel(new_host):
     assert result["addon_version"] == [1, 1, 5]
     assert result["license"] == "Apache-2.0"
     assert result["registration"]["registered"] is True
-    assert result["registration"]["owner"] == _addon.OWNER_THIS_PLUGIN
-    assert result["panel"]["class"] == "VIEW3D_PT_Autobake"
-    assert result["panel"]["idname"] == "VIEW3D_PT_Atobake"
+    assert result["panel"]["idname"] == _ui.PANEL_IDNAME
+    assert result["panel"]["registered"] is True
+    assert result["panel"]["owned_by_this_plugin"] is True
+    assert result["panel"]["module"].startswith("dcc_plugin_autobake")
+    for operator in _ui.OPERATORS:
+        assert result["operators"][operator]["owned_by_this_plugin"] is True
 
 
 def test_status_reports_the_skipped_legacy_knobs_on_5x(new_host):
@@ -452,29 +496,38 @@ def test_status_reports_no_skipped_knobs_on_4x(host):
     assert result["legacy_knobs_skipped"] == []
 
 
-def test_panel_registration_is_looked_up_by_idname(new_host):
-    """The class is ``VIEW3D_PT_Autobake`` but it registers as ``VIEW3D_PT_Atobake``."""
-    new_host.types.VIEW3D_PT_Atobake = autobake._panel_class()
+def test_status_does_not_credit_the_host_providers_panel(new_host):
+    """The trap: the host's panel looks identical and works while we are dead.
+
+    Status must report it as present but *not ours*, so no acceptance run can
+    mistake the Blender provider's panel for this plugin's.
+    """
+    new_host.types.VIEW3D_PT_Atobake = _HostPanel
     new_host.add_object("Cube")
     new_host.select("Cube")
-    assert autobake.status()["panel"]["registered"] is True
+    result = autobake.status()
+
+    host_panel = result["host_registrations"]["panel"]
+    assert host_panel["registered"] is True
+    assert host_panel["owned_by_this_plugin"] is False
+    assert host_panel["module"] == _HostPanel.__module__
+    # And ours is separately reported and attributable.
+    assert result["panel"]["owned_by_this_plugin"] is True
 
 
-def test_panel_lookup_rejects_an_unrelated_same_named_class(new_host):
-    """The class is ``VIEW3D_PT_Autobake`` but it registers as ``VIEW3D_PT_Atobake``."""
-    from dcc_plugin_autobake.agent.tools import autobake as _tool
+def test_status_marks_a_host_operator_it_cannot_verify_as_not_ours(new_host):
+    """``at.*`` belongs to the host; it is never evidence for us."""
+    import types as _types
 
-    new_host.add_object("Cube")
-    new_host.select("Cube")
-    assert _tool.status()["panel"]["registered"] is True
-
-    # Replace the registered class with something that is not the vendored
-    # panel: the lookup must not report "registered" on the strength of the
-    # attribute name alone.
-    new_host.types.VIEW3D_PT_Atobake = object()
-    new_host.types.VIEW3D_PT_Autobake = dict
-    assert _tool._panel_class() is not dict
-    assert _tool.status()["panel"]["registered"] is False
+    new_host.ops.at = _types.SimpleNamespace(
+        create_environment=lambda *a, **k: {"FINISHED"},
+        bake=lambda *a, **k: {"FINISHED"},
+        bake_ao=lambda *a, **k: {"FINISHED"},
+    )
+    result = autobake.status()
+    for upstream, report in result["host_registrations"]["operators"].items():
+        assert report["registered"] is True
+        assert report["owned_by_this_plugin"] is False
 
 
 # ---------------------------------------------------------------------------

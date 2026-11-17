@@ -21,7 +21,7 @@
 
 provider_type = "autobake"
 plugin_track = "default"
-plugin_version = "0.1.1"
+plugin_version = "0.1.2"
 runtime_version = "0.5.10"
 # Blender releases whose embedded Python can import this agent. Kept as an
 # explicit list rather than a range so an accidental 4.0/4.1 install (no
